@@ -9,7 +9,7 @@ import cmaps
 from mpl_toolkits import basemap
 
 def main():
-    save_flag = False
+    save_flag = True
     PRE = preprocess()
     DRA = draw_tools()
 
@@ -142,30 +142,6 @@ class preprocess():
         else:
             print('aphrodite pickle file has ***NOT*** been saved yet')
 
-
-    def extract_field(self, prcp, resolution='0.25'):
-        """
-        shape_size: [280(15S-55N, 360(60E-150E)]
-        N5-25, E90-110
-        0=54.75-55
-        1=54.55-54.75
-        2=54.25-54.55
-        3=54-54.25
-        """
-        if resolution == '0.25':
-            north = (55-25)*4 # N25
-            south = north + (20*4) #N5
-            west = (90-60)*4 #E90
-            east = west + (20*4) # E110
-            field = prcp[:, north:south, west:east]
-        elif resolution == '1':
-            north = (55-25) # N25
-            south = north + (20) #N5
-            west = (90-60) #E90
-            east = west + (20) # E110
-            field = prcp[:, north:south, west:east]
-
-        return field
 
 
 class draw_tools():
