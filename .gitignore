@@ -1,0 +1,9 @@
+# Junk files (cache, editor swap, OS metadata)
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+*.swp
+*.swo
+*:Zone.Identifier
+.DS_Store
+Thumbs.db
