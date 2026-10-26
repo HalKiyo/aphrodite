@@ -1,12 +1,13 @@
 import pickle
 import numpy as np
-import numpy.ma as ma
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import cartopy.crs as ccrs
 import cmaps
 from mpl_toolkits import basemap
+
+from aphro_common import MASK_VALUE, fill, mask
 
 def main():
     save_flag = True
@@ -30,15 +31,13 @@ class preprocess():
                          "/v11_v19_monthly_mean_mm_per_day_1951-2015.npy"
         self.savepath = "/work/kajiyama/preprocessed/APHRODITE" \
                         "/aphrodite_anom_std_interp.pickle"
-        self.mask_value = -99
+        self.mask_value = MASK_VALUE
 
     def _fill(self, x):
-        f = ma.filled(x, fill_value=self.mask_value)
-        return f
+        return fill(x, mask_value=self.mask_value)
 
     def _mask(self, x):
-        m = ma.masked_where(x<=self.mask_value, x)
-        return m
+        return mask(x, mask_value=self.mask_value)
 
     def load_npy(self, path):
         """
@@ -85,7 +84,6 @@ class preprocess():
         S15-N55
         E60-E150
         """
-        lt, ln = 280, 360 # grid number of latitude and longitude
         lons = np.linspace(60, 150, 360)
         lats = np.linspace(-15, 55, 280)
         xi = np.linspace(60, 150, 90)
@@ -177,7 +175,7 @@ class draw_tools():
         fig, ax = plt.subplots()
 
         bp = ax.boxplot(points, sym='')
-        ax.set_xticklabels=(df.columns)
+        ax.set_xticklabels(df.columns)
 
         for i in flood:
             year = 12*(i - 1951)
@@ -214,7 +212,7 @@ class draw_tools():
                             orientation='horizontal')
         plt.show()
 
-    def _plot_anom(self, image):
+    def _plot_diverging(self, image, norm):
         projection = ccrs.PlateCarree(central_longitude=180)
         img_extent = (-120, -30, -15, 55)
         cmap = plt.cm.get_cmap('BrBG', 10)
@@ -226,29 +224,17 @@ class draw_tools():
                          origin='upper',
                          extent=img_extent,
                          transform=projection,
-                         norm=colors.CenteredNorm(),
+                         norm=norm,
                          cmap=cmap,
                          )
-        cbar = fig.colorbar(mat, ax=ax, orientation='horizontal')
+        fig.colorbar(mat, ax=ax, orientation='horizontal')
         plt.show()
+
+    def _plot_anom(self, image):
+        self._plot_diverging(image, colors.CenteredNorm())
 
     def _plot_std(self, image):
-        projection = ccrs.PlateCarree(central_longitude=180)
-        img_extent = (-120, -30, -15, 55)
-        cmap = plt.cm.get_cmap('BrBG', 10)
-
-        fig = plt.figure()
-        ax = plt.subplot(projection=projection)
-        ax.coastlines()
-        mat = ax.matshow(image,
-                         origin='upper',
-                         extent=img_extent,
-                         transform=projection,
-                         norm=colors.Normalize(vmin=-3, vmax=3),
-                         cmap=cmap,
-                         )
-        cbar = fig.colorbar(mat, ax=ax, orientation='horizontal')
-        plt.show()
+        self._plot_diverging(image, colors.Normalize(vmin=-3, vmax=3))
 
 
 if __name__ == '__main__':

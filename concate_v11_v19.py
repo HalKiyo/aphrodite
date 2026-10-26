@@ -1,8 +1,18 @@
 import netCDF4
 import calendar
 import numpy as np
-import numpy.ma as ma
 import matplotlib.pyplot as plt
+
+from aphro_common import MASK_VALUE, fill, mask
+
+# daily input (V11 netCDF for 1951-1997, V19 flat binary for 1998-2015)
+V11_PATH = "/work/kajiyama/data/APHRODITE/V1101_MA_025d/APHRO_MA_025deg_V1101.{year}.nc"
+V19_PATH = "/work/kajiyama/data/APHRODITE/V1901_MA_025d/APHRO_MA_025deg_V1901.{year}"
+V11_YEARS = range(1952, 1998)  # 1951 is read separately by get_aphro1951
+V19_YEARS = range(1998, 2016)
+# monthly output
+SAVEPATH = "/work/kajiyama/preprocessed/APHRODITE/" \
+           "v11_v19_monthly_mean_mm_per_day_1951-2015.npy"
 
 def main():
     NOMASK = no_maske_concat()
@@ -13,9 +23,7 @@ def main():
     plt.show()
 
     # save data
-    savepath  = "/work/kajiyama/preprocessed/APHRODITE/" \
-                "v11_v19_monthly_mean_mm_per_day_1951-2015.npy"
-    np.save(savepath, prcp)
+    np.save(SAVEPATH, prcp)
     print(prcp.shape)
 
 ###############################################################################
@@ -58,18 +66,13 @@ class mask_preprocess():
 ##############################################################################
 class no_maske_concat():
     def __init__(self):
-        self.top = 0,
-        self.bottom= 280,
-        self.left = 0,
-        self.right = 360
-        self.fill_value = -99
-        self.base_path = "/work/kajiyama/data/APHRODITE/" \
-                         "V1101_MA_025d/APHRO_MA_025deg_V1101.1951.nc"
+        self.fill_value = MASK_VALUE
+        self.base_path = V11_PATH.format(year=1951)
 
     def original_mask(self, days=365, bottom=280, right=360):
         v11 = self.base_path
-        nc = netCDF4.Dataset(v11, 'r')
-        var = nc.variables['precip'][:]
+        with netCDF4.Dataset(v11, 'r') as nc:
+            var = nc.variables['precip'][:]
         shape = np.reshape(var, (days, bottom, right))
         # mask of end of july
         reverse = shape[210, ::-1, :]
@@ -77,75 +80,21 @@ class no_maske_concat():
         return aphro_mask
 
     def _fill(self, masked):
-        filled = ma.filled(masked, fill_value=self.fill_value)
-        return filled
+        return fill(masked, mask_value=self.fill_value)
 
     def _mask(self, filled):
-        masked = ma.masked_where(filled <= self.fill_value, filled)
-        return masked
+        return mask(filled, mask_value=self.fill_value)
 
     def open_netcdf(self, path, days, top=0, bottom=280, left=0, right=360):
         """
         reverse: numpy.ma.core.MaskedArray
         """
-        nc = netCDF4.Dataset(path, 'r')
-        var = nc.variables['precip'][:]
+        with netCDF4.Dataset(path, 'r') as nc:
+            var = nc.variables['precip'][:]
         shape = np.reshape(var, (days, bottom, right))
         reverse = shape[:, ::-1, :]
         reverse_masked = self._mask(reverse)
         return reverse_masked
-
-    def get_aphro1951(self):
-        """
-        reverse.shape = (days, lat_num, lon_num)
-        use mean instead of sum for monthly data creation
-        -> monthly average mm/day
-        -> because there might be missing data with month
-        """
-        v11 = self.base_path
-        reverse_masked = self.open_netcdf(v11, 365)
-
-        # monthly conversion
-        ind = 0
-        cal = calendar.monthrange(1951, 1)
-        numdays = cal[1]
-        # monthtotal is maskedarray
-        monthtotal = np.mean(reverse_masked[ind : ind+numdays], axis=0)
-        # monthtotal_filled is ndarray
-        monthtotal_filled = self._fill(monthtotal)
-        # prcp is ndarray:  mask_value will be automatically filled with 0 if maskedarray
-        prcp = np.array([monthtotal_filled])
-
-        ind += numdays
-        for mon in range(2, 13):
-            cal = calendar.monthrange(1951, mon)
-            numdays = cal[1]
-            monthtotal = np.mean(reverse_masked[ind:ind+numdays], axis=0)
-            monthtotal_filled = self._fill(monthtotal)
-            arry = np.array([monthtotal_filled])
-            prcp = np.concatenate([prcp, arry])
-            ind += numdays
-
-        return prcp
-
-    def get_previous_aphro(self, prcp):
-        for year in range(1952, 1998):
-            v11 = f"/work/kajiyama/data/APHRODITE/V1101_MA_025d/APHRO_MA_025deg_V1101.{year}.nc"
-            if calendar.isleap(year):
-                reverse_masked = self.open_netcdf(v11, 366)
-            else:
-                reverse_masked = self.open_netcdf(v11, 365)
-            ind = 0
-            for mon in range(1, 13):
-                cal = calendar.monthrange(year, mon)
-                numdays = cal[1]
-                monthtotal = np.mean(reverse_masked[ind : ind+numdays], axis=0)
-                monthtotal_filled = self._fill(monthtotal)
-                arry = np.array([monthtotal_filled])
-                prcp = np.concatenate([prcp, arry])
-                ind += numdays
-
-        return prcp
 
     def open_binary(self, path, days):
         raw = np.fromfile(path, 'float32').reshape(days, 2, 280, 360)
@@ -153,24 +102,49 @@ class no_maske_concat():
         reverse_masked = self._mask(reverse)
         return reverse_masked
 
-    def get_latest_aphro(self, prcp):
-        for year in range(1998, 2016):
-            v19 = f"/work/kajiyama/data/APHRODITE/V1901_MA_025d/APHRO_MA_025deg_V1901.{year}"
-            if calendar.isleap(year):
-                reverse_masked = self.open_binary(v19, 366)
-            else:
-                reverse_masked = self.open_binary(v19, 365)
-            ind = 0
-            for mon in range(1, 13):
-                cal = calendar.monthrange(year, mon)
-                numdays = cal[1]
-                monthtotal = np.mean(reverse_masked[ind : ind+numdays], axis=0)
-                monthtotal_filled = self._fill(monthtotal)
-                arry = np.array([monthtotal_filled])
-                prcp = np.concatenate([prcp, arry])
-                ind += numdays
+    def monthly_mean(self, reverse_masked, year):
+        """
+        Daily masked array of one year to a list of 12 monthly mean fields.
+        use mean instead of sum for monthly data creation
+        -> monthly average mm/day
+        -> because there might be missing data with month
+        Each element is an ndarray whose masked cells are filled with fill_value.
+        """
+        months = []
+        ind = 0
+        for mon in range(1, 13):
+            numdays = calendar.monthrange(year, mon)[1]
+            # monthtotal is maskedarray
+            monthtotal = np.mean(reverse_masked[ind : ind+numdays], axis=0)
+            # monthtotal_filled is ndarray
+            months.append(self._fill(monthtotal))
+            ind += numdays
+        return months
 
-        return prcp
+    def _days(self, year):
+        return 366 if calendar.isleap(year) else 365
+
+    def get_aphro1951(self):
+        """
+        reverse.shape = (days, lat_num, lon_num)
+        returns prcp with shape (12, lat_num, lon_num)
+        """
+        reverse_masked = self.open_netcdf(self.base_path, 365)
+        return np.stack(self.monthly_mean(reverse_masked, 1951))
+
+    def get_previous_aphro(self, prcp):
+        months = []
+        for year in V11_YEARS:
+            reverse_masked = self.open_netcdf(V11_PATH.format(year=year), self._days(year))
+            months.extend(self.monthly_mean(reverse_masked, year))
+        return np.concatenate([prcp, np.stack(months)])
+
+    def get_latest_aphro(self, prcp):
+        months = []
+        for year in V19_YEARS:
+            reverse_masked = self.open_binary(V19_PATH.format(year=year), self._days(year))
+            months.extend(self.monthly_mean(reverse_masked, year))
+        return np.concatenate([prcp, np.stack(months)])
 
 
 if __name__ == '__main__':
